@@ -15,6 +15,14 @@ func (r *InvoiceStatusResponse) PaymentError() *PaymentError {
 	return NewPaymentError(r.InvoiceID, r.Status, code, reason)
 }
 
+// RequireNoPaymentError returns business payment error if status payload indicates failure.
+func (r *InvoiceStatusResponse) RequireNoPaymentError() error {
+	if pe := r.PaymentError(); pe != nil {
+		return pe
+	}
+	return nil
+}
+
 // PaymentError returns business-level payment error (if any) extracted from wallet/payment response.
 // Note: wallet/payment response usually contains failureReason but not errCode.
 // For detailed errCode, call Status(...) or rely on webhook payload.
@@ -28,4 +36,12 @@ func (r *WalletPaymentResponse) PaymentError() *PaymentError {
 	}
 	// No errCode in this response.
 	return NewPaymentError(r.InvoiceID, r.Status, "", reason)
+}
+
+// RequireNoPaymentError returns business payment error if wallet payment indicates failure.
+func (r *WalletPaymentResponse) RequireNoPaymentError() error {
+	if pe := r.PaymentError(); pe != nil {
+		return pe
+	}
+	return nil
 }

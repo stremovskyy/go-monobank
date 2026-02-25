@@ -2,16 +2,45 @@ package go_monobank
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
+const (
+	// PaymentErrorContactIssuingBank means customer should contact the card issuing bank.
+	PaymentErrorContactIssuingBank = "issuing bank"
+	// PaymentErrorContactMonobank means merchant should contact monobank support.
+	PaymentErrorContactMonobank = "monobank support"
+	// PaymentErrorContactCustomer means customer action is required.
+	PaymentErrorContactCustomer = "customer"
+	// PaymentErrorContactAPI means integrator/merchant API configuration should be checked.
+	PaymentErrorContactAPI = "api/integration team"
+)
+
 // PaymentErrorMeta is a human-friendly description for a payment errCode.
-// The values are taken from monobank acquiring docs ("Помилки в процесі оплати").
+// Source: monobank acquiring docs (payment errors).
 // Note: failureReason from API/webhook is still the most precise explanation.
 type PaymentErrorMeta struct {
 	Code    string
 	Text    string
 	Contact string
+}
+
+// HandlingHint returns a practical next step based on contact target.
+func (m PaymentErrorMeta) HandlingHint() string {
+	contact := strings.ToLower(strings.TrimSpace(m.Contact))
+	switch contact {
+	case strings.ToLower(PaymentErrorContactIssuingBank):
+		return "Ask customer to contact the issuing bank and verify card restrictions/limits."
+	case strings.ToLower(PaymentErrorContactMonobank):
+		return "Contact monobank support and provide invoiceId + errCode for investigation."
+	case strings.ToLower(PaymentErrorContactCustomer):
+		return "Ask customer to fix input/payment details and retry the payment flow."
+	case strings.ToLower(PaymentErrorContactAPI):
+		return "Review integration/request validation and merchant configuration in API settings."
+	default:
+		return "Review errCode and failureReason, then route to the responsible support team."
+	}
 }
 
 // PaymentError is a business-level error parsed from webhook/status response fields:
@@ -66,86 +95,158 @@ func (e *PaymentError) Is(target error) bool {
 	return target == ErrPaymentError
 }
 
+// PrimaryMeta returns first matched metadata entry (if any).
+func (e *PaymentError) PrimaryMeta() (*PaymentErrorMeta, bool) {
+	if e == nil || len(e.Metas) == 0 {
+		return nil, false
+	}
+	return &e.Metas[0], true
+}
+
+// Explanations returns deduplicated human-readable explanations.
+func (e *PaymentError) Explanations() []string {
+	if e == nil || len(e.Metas) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(e.Metas))
+	out := make([]string, 0, len(e.Metas))
+	for _, meta := range e.Metas {
+		text := strings.TrimSpace(meta.Text)
+		if text == "" {
+			continue
+		}
+		if _, ok := seen[text]; ok {
+			continue
+		}
+		seen[text] = struct{}{}
+		out = append(out, text)
+	}
+	return out
+}
+
+// Contacts returns deduplicated contact targets.
+func (e *PaymentError) Contacts() []string {
+	if e == nil || len(e.Metas) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(e.Metas))
+	out := make([]string, 0, len(e.Metas))
+	for _, meta := range e.Metas {
+		contact := strings.TrimSpace(meta.Contact)
+		if contact == "" {
+			continue
+		}
+		if _, ok := seen[contact]; ok {
+			continue
+		}
+		seen[contact] = struct{}{}
+		out = append(out, contact)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// HandlingHints returns deduplicated next-step hints for operational handling.
+func (e *PaymentError) HandlingHints() []string {
+	if e == nil || len(e.Metas) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(e.Metas))
+	out := make([]string, 0, len(e.Metas))
+	for _, meta := range e.Metas {
+		hint := strings.TrimSpace(meta.HandlingHint())
+		if hint == "" {
+			continue
+		}
+		if _, ok := seen[hint]; ok {
+			continue
+		}
+		seen[hint] = struct{}{}
+		out = append(out, hint)
+	}
+	return out
+}
+
 // PaymentErrorCatalog maps errCode -> one or more possible meta descriptions.
-// Source: monobank acquiring docs page "Помилки в процесі оплати".
+// Source: https://monobank.ua/api-docs/acquiring/dev/errors/payment
 var PaymentErrorCatalog = map[string][]PaymentErrorMeta{
-	"6":    {{Code: "6", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"40":   {{Code: "40", Text: "Карта втрачена. Витрати обмежені", Contact: "банк, який випустив картку"}},
-	"41":   {{Code: "41", Text: "Карта втрачена. Витрати обмежені", Contact: "банк, який випустив картку"}},
-	"50":   {{Code: "50", Text: "Витрати по карті обмежені", Contact: "банк, який випустив картку"}},
-	"51":   {{Code: "51", Text: "Закінчився строк дії картки", Contact: "банк, який випустив картку"}},
-	"52":   {{Code: "52", Text: "Номер картки вказано невірно", Contact: "банк, який випустив картку"}},
-	"54":   {{Code: "54", Text: "Стався технічний збій", Contact: "банк, який випустив картку"}},
-	"55":   {{Code: "55", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"56":   {{Code: "56", Text: "Тип карти не підтримує подібні оплати", Contact: "банк, який випустив картку"}},
-	"57":   {{Code: "57", Text: "Транзакція не підтримується", Contact: "банк, який випустив картку"}, {Code: "57", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"58":   {{Code: "58", Text: "Витрати по карті обмежені на покупку", Contact: "банк, який випустив картку"}, {Code: "58", Text: "Витрати по карті обмежені", Contact: "банк, який випустив картку"}},
-	"59":   {{Code: "59", Text: "На картці недостатньо коштів для завершення покупки", Contact: "банк, який випустив картку"}},
-	"60":   {{Code: "60", Text: "Перевищено ліміт кількості видаткових операцій", Contact: "банк, який випустив картку"}},
-	"61":   {{Code: "61", Text: "На картці перевищено інтернет-ліміт", Contact: "банк, який випустив картку"}},
-	"62":   {{Code: "62", Text: "Перевищено ліміт неправильних вводів PIN-коду", Contact: "банк, який випустив картку"}},
-	"63":   {{Code: "63", Text: "На картці перевищено інтернет-ліміт", Contact: "банк, який випустив картку"}},
-	"67":   {{Code: "67", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"68":   {{Code: "68", Text: "Відмова в проведенні операції з боку МПС", Contact: "банк, який випустив картку"}},
-	"71":   {{Code: "71", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"72":   {{Code: "72", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"73":   {{Code: "73", Text: "Помилка маршрутизації", Contact: "monobank"}},
-	"74":   {{Code: "74", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"75":   {{Code: "75", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"80":   {{Code: "80", Text: "Неправильний CVV код", Contact: "банк, який випустив картку"}},
-	"81":   {{Code: "81", Text: "Неправильний CVV2 код", Contact: "банк, який випустив картку"}},
-	"82":   {{Code: "82", Text: "Транзакція не дозволена з такими умовами проведення", Contact: "банк, який випустив картку"}, {Code: "82", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"83":   {{Code: "83", Text: "Перевищені ліміти спроб оплати з карт", Contact: "банк, який випустив картку"}},
-	"84":   {{Code: "84", Text: "Неправильне значення перевірочного числа 3D Secure", Contact: "monobank"}},
-	"98":   {{Code: "98", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"1000": {{Code: "1000", Text: "Стався технічний збій", Contact: "monobank"}},
-	"1005": {{Code: "1005", Text: "Стався технічний збій", Contact: "monobank"}},
-	"1010": {{Code: "1010", Text: "Стався технічний збій", Contact: "monobank"}},
-	"1014": {{Code: "1014", Text: "Для проведення оплати потрібно вказати повні реквізити карти", Contact: "покупець"}},
-	"1034": {{Code: "1034", Text: "3-D Secure перевірку не пройдено", Contact: "банк, який випустив картку"}},
-	"1035": {{Code: "1035", Text: "3-D Secure перевірку не пройдено", Contact: "банк, який випустив картку"}},
-	"1036": {{Code: "1036", Text: "Стався технічний збій", Contact: "monobank"}},
-	"1044": {{Code: "1044", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"1045": {{Code: "1045", Text: "3-D Secure перевірку не пройдено", Contact: "банк, який випустив картку"}},
-	"1053": {{Code: "1053", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"1054": {{Code: "1054", Text: "3-D Secure перевірку не пройдено", Contact: "monobank"}},
-	"1056": {{Code: "1056", Text: "Переказ можливий тільки на картку українського банку", Contact: "monobank"}},
-	"1064": {{Code: "1064", Text: "Оплата можлива лише з використанням карток Mastercard або Visa", Contact: "банк, який випустив картку"}},
-	"1066": {{Code: "1066", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"1077": {{Code: "1077", Text: "Сума оплати менша ніж допустима сума (налаштування МПС)", Contact: "API"}},
-	"1080": {{Code: "1080", Text: "Термін дії карти вказаний невірно", Contact: "банк, який випустив картку"}},
-	"1090": {{Code: "1090", Text: "Інформація про клієнта не знайдена", Contact: "monobank"}},
-	"1115": {{Code: "1115", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"1121": {{Code: "1121", Text: "Помилка налаштувань торгівельної точки", Contact: "monobank"}},
-	"1145": {{Code: "1145", Text: "Мінімальна сума переказу", Contact: "monobank"}},
-	"1165": {{Code: "1165", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"1187": {{Code: "1187", Text: "Треба вказати імʼя отримувача", Contact: "API"}},
-	"1193": {{Code: "1193", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"1194": {{Code: "1194", Text: "Цей спосіб поповнення працює тільки з картами інших банків", Contact: "monobank"}},
-	"1200": {{Code: "1200", Text: "Обов'язкова наявність CVV коду", Contact: "банк, який випустив картку"}},
-	"1405": {{Code: "1405", Text: "Платіжна система обмежила перекази", Contact: "банк, який випустив картку"}},
-	"1406": {{Code: "1406", Text: "Карта заблокована ризик-менеджментом", Contact: "банк, який випустив картку"}},
-	"1407": {{Code: "1407", Text: "Операцію заблоковано ризик-менеджментом", Contact: "monobank"}},
-	"1408": {{Code: "1408", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"1411": {{Code: "1411", Text: "Цей вид операцій з гривневих карток тимчасово обмежений", Contact: "monobank"}},
-	"1413": {{Code: "1413", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"1419": {{Code: "1419", Text: "Термін дії карти вказаний невірно", Contact: "банк, який випустив картку"}},
-	"1420": {{Code: "1420", Text: "Стався технічний збій", Contact: "monobank"}},
-	"1421": {{Code: "1421", Text: "3-D Secure перевірку не пройдено", Contact: "банк, який випустив картку"}},
-	"1422": {{Code: "1422", Text: "Виникла помилка на етапі 3-D Secure", Contact: "банк, який випустив картку"}},
-	"1425": {{Code: "1425", Text: "Виникла помилка на етапі 3-D Secure", Contact: "банк, який випустив картку"}},
-	"1428": {{Code: "1428", Text: "Операцію заблоковано банком-емітентом", Contact: "банк, який випустив картку"}},
-	"1429": {{Code: "1429", Text: "3-D Secure перевірку не пройдено", Contact: "банк, який випустив картку"}},
-	"1433": {{Code: "1433", Text: "Перевірте імʼя та прізвище отримувача", Contact: "monobank"}},
-	"1436": {{Code: "1436", Text: "Платіж відхилено (обмеження за політикою)", Contact: "monobank"}},
-	"1439": {{Code: "1439", Text: "Недопустима операція для використання за програмою єВідновлення", Contact: "monobank"}},
-	"1458": {{Code: "1458", Text: "Операцію відхилено на кроці 3DS", Contact: "банк, який випустив картку"}},
-	"8001": {{Code: "8001", Text: "Минув термін дії посилання на оплату", Contact: "покупець"}},
-	"8002": {{Code: "8002", Text: "Клієнт відмінив оплату", Contact: "покупець"}},
-	"8003": {{Code: "8003", Text: "Стався технічний збій", Contact: "monobank"}},
-	"8004": {{Code: "8004", Text: "Проблеми з проведенням 3-D Secure", Contact: "банк, який випустив картку"}},
-	"8005": {{Code: "8005", Text: "Перевищено ліміти на прийом оплат", Contact: "monobank"}},
-	"8006": {{Code: "8006", Text: "Перевищено ліміти на прийом оплат", Contact: "monobank"}},
+	"6":    {{Code: "6", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"40":   {{Code: "40", Text: "Card is reported as lost. Spending is restricted.", Contact: PaymentErrorContactIssuingBank}},
+	"41":   {{Code: "41", Text: "Card is reported as lost. Spending is restricted.", Contact: PaymentErrorContactIssuingBank}},
+	"50":   {{Code: "50", Text: "Card spending is restricted.", Contact: PaymentErrorContactIssuingBank}},
+	"51":   {{Code: "51", Text: "The card has expired.", Contact: PaymentErrorContactIssuingBank}},
+	"52":   {{Code: "52", Text: "Card number is invalid.", Contact: PaymentErrorContactIssuingBank}},
+	"54":   {{Code: "54", Text: "A technical failure occurred.", Contact: PaymentErrorContactIssuingBank}},
+	"55":   {{Code: "55", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"56":   {{Code: "56", Text: "Card type does not support this payment.", Contact: PaymentErrorContactIssuingBank}},
+	"57":   {{Code: "57", Text: "Transaction is not supported.", Contact: PaymentErrorContactIssuingBank}},
+	"58":   {{Code: "58", Text: "Card spending for purchases is restricted.", Contact: PaymentErrorContactIssuingBank}, {Code: "58", Text: "Card spending is restricted.", Contact: PaymentErrorContactIssuingBank}},
+	"59":   {{Code: "59", Text: "Insufficient funds to complete the purchase.", Contact: PaymentErrorContactIssuingBank}},
+	"60":   {{Code: "60", Text: "Card spending transactions count limit exceeded.", Contact: PaymentErrorContactIssuingBank}},
+	"61":   {{Code: "61", Text: "Card internet payment limit exceeded.", Contact: PaymentErrorContactIssuingBank}},
+	"62":   {{Code: "62", Text: "PIN retry attempts limit is reached or exceeded.", Contact: PaymentErrorContactIssuingBank}},
+	"63":   {{Code: "63", Text: "Card internet payment limit exceeded.", Contact: PaymentErrorContactIssuingBank}},
+	"67":   {{Code: "67", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"68":   {{Code: "68", Text: "Payment system declined the transaction.", Contact: PaymentErrorContactIssuingBank}},
+	"71":   {{Code: "71", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"72":   {{Code: "72", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"73":   {{Code: "73", Text: "Routing error.", Contact: PaymentErrorContactMonobank}},
+	"74":   {{Code: "74", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"75":   {{Code: "75", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"80":   {{Code: "80", Text: "Invalid CVV code.", Contact: PaymentErrorContactIssuingBank}},
+	"81":   {{Code: "81", Text: "Invalid CVV2 code.", Contact: PaymentErrorContactIssuingBank}},
+	"82":   {{Code: "82", Text: "Transaction is not allowed under these conditions.", Contact: PaymentErrorContactIssuingBank}, {Code: "82", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"83":   {{Code: "83", Text: "Card payment attempts limit exceeded.", Contact: PaymentErrorContactIssuingBank}},
+	"84":   {{Code: "84", Text: "Invalid 3-D Secure CAVV value.", Contact: PaymentErrorContactMonobank}},
+	"98":   {{Code: "98", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"1000": {{Code: "1000", Text: "Internal technical failure.", Contact: PaymentErrorContactMonobank}},
+	"1005": {{Code: "1005", Text: "Internal technical failure.", Contact: PaymentErrorContactMonobank}},
+	"1010": {{Code: "1010", Text: "Internal technical failure.", Contact: PaymentErrorContactMonobank}},
+	"1014": {{Code: "1014", Text: "Full card details are required to process payment.", Contact: PaymentErrorContactCustomer}},
+	"1034": {{Code: "1034", Text: "3-D Secure verification failed.", Contact: PaymentErrorContactIssuingBank}},
+	"1035": {{Code: "1035", Text: "3-D Secure verification failed.", Contact: PaymentErrorContactIssuingBank}},
+	"1036": {{Code: "1036", Text: "Internal technical failure.", Contact: PaymentErrorContactMonobank}},
+	"1044": {{Code: "1044", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"1045": {{Code: "1045", Text: "3-D Secure verification failed.", Contact: PaymentErrorContactIssuingBank}},
+	"1053": {{Code: "1053", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"1054": {{Code: "1054", Text: "3-D Secure verification failed.", Contact: PaymentErrorContactMonobank}},
+	"1056": {{Code: "1056", Text: "Transfer is allowed only to cards issued by Ukrainian banks.", Contact: PaymentErrorContactMonobank}},
+	"1064": {{Code: "1064", Text: "Payment is allowed only with Mastercard or Visa cards.", Contact: PaymentErrorContactIssuingBank}},
+	"1066": {{Code: "1066", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"1077": {{Code: "1077", Text: "Payment amount is below minimum allowed amount (payment system settings).", Contact: PaymentErrorContactAPI}},
+	"1080": {{Code: "1080", Text: "Card expiry date is invalid.", Contact: PaymentErrorContactIssuingBank}},
+	"1090": {{Code: "1090", Text: "Customer information not found.", Contact: PaymentErrorContactMonobank}},
+	"1115": {{Code: "1115", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"1121": {{Code: "1121", Text: "Merchant configuration error.", Contact: PaymentErrorContactMonobank}},
+	"1145": {{Code: "1145", Text: "Minimum transfer amount is not met.", Contact: PaymentErrorContactMonobank}},
+	"1165": {{Code: "1165", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"1187": {{Code: "1187", Text: "Receiver name must be provided.", Contact: PaymentErrorContactAPI}},
+	"1193": {{Code: "1193", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"1194": {{Code: "1194", Text: "This top-up method works only with cards issued by other banks.", Contact: PaymentErrorContactMonobank}},
+	"1200": {{Code: "1200", Text: "CVV code is required.", Contact: PaymentErrorContactIssuingBank}},
+	"1405": {{Code: "1405", Text: "Payment system transfer limits reached.", Contact: PaymentErrorContactIssuingBank}},
+	"1406": {{Code: "1406", Text: "Card is blocked by risk management.", Contact: PaymentErrorContactIssuingBank}},
+	"1407": {{Code: "1407", Text: "Transaction is blocked by risk management.", Contact: PaymentErrorContactMonobank}},
+	"1408": {{Code: "1408", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"1411": {{Code: "1411", Text: "This type of operation from UAH cards is temporarily restricted.", Contact: PaymentErrorContactMonobank}},
+	"1413": {{Code: "1413", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"1419": {{Code: "1419", Text: "Card expiry date is invalid.", Contact: PaymentErrorContactIssuingBank}},
+	"1420": {{Code: "1420", Text: "Internal technical failure.", Contact: PaymentErrorContactMonobank}},
+	"1421": {{Code: "1421", Text: "3-D Secure verification failed.", Contact: PaymentErrorContactIssuingBank}},
+	"1422": {{Code: "1422", Text: "Error occurred during 3-D Secure step.", Contact: PaymentErrorContactIssuingBank}},
+	"1425": {{Code: "1425", Text: "Error occurred during 3-D Secure step.", Contact: PaymentErrorContactIssuingBank}},
+	"1428": {{Code: "1428", Text: "Transaction is blocked by the issuing bank.", Contact: PaymentErrorContactIssuingBank}},
+	"1429": {{Code: "1429", Text: "3-D Secure verification failed.", Contact: PaymentErrorContactIssuingBank}},
+	"1433": {{Code: "1433", Text: "Check receiver first and last name. If data is invalid, bank can reject the transfer.", Contact: PaymentErrorContactMonobank}},
+	"1436": {{Code: "1436", Text: "Payment rejected due to policy restrictions.", Contact: PaymentErrorContactMonobank}},
+	"1439": {{Code: "1439", Text: "Operation is not allowed under the eRecovery program.", Contact: PaymentErrorContactMonobank}},
+	"1458": {{Code: "1458", Text: "Transaction rejected at 3DS step.", Contact: PaymentErrorContactIssuingBank}},
+	"8001": {{Code: "8001", Text: "Payment link has expired.", Contact: PaymentErrorContactCustomer}},
+	"8002": {{Code: "8002", Text: "Customer cancelled the payment.", Contact: PaymentErrorContactCustomer}},
+	"8003": {{Code: "8003", Text: "Technical failure occurred.", Contact: PaymentErrorContactMonobank}},
+	"8004": {{Code: "8004", Text: "3-D Secure processing problem.", Contact: PaymentErrorContactIssuingBank}},
+	"8005": {{Code: "8005", Text: "Payment acceptance limits exceeded.", Contact: PaymentErrorContactMonobank}},
+	"8006": {{Code: "8006", Text: "Payment acceptance limits exceeded.", Contact: PaymentErrorContactMonobank}},
 }
 
 // LookupPaymentErrorMetas returns meta info for the given errCode.
@@ -170,7 +271,10 @@ func NewPaymentError(invoiceID string, status InvoiceStatus, errCode string, fai
 	reason := strings.TrimSpace(failureReason)
 
 	if code == "" && reason == "" {
-		return nil
+		if !status.IsFailure() {
+			return nil
+		}
+		reason = fmt.Sprintf("payment status indicates failure: %s", status)
 	}
 
 	pe := &PaymentError{

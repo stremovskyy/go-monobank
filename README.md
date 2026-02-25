@@ -305,6 +305,33 @@ Common sentinel errors:
 - `ErrInvalidSignature`
 - `ErrPaymentError`
 
+### Payment Error Explanations (English)
+
+Source docs:
+<https://monobank.ua/api-docs/acquiring/dev/errors/payment>
+
+The SDK contains English explanations and contact guidance for all documented
+`errCode` values from monobank payment errors page.
+
+```go
+status, err := client.Status(go_monobank.NewRequest().WithInvoiceID(invoiceID))
+if err != nil {
+	return err
+}
+
+if pe := status.PaymentError(); pe != nil {
+	fmt.Println(pe.Error())
+	fmt.Println("contacts:", pe.Contacts())         // e.g. issuing bank / monobank support
+	fmt.Println("explanations:", pe.Explanations()) // English explanations from docs
+	fmt.Println("hints:", pe.HandlingHints())       // operational next steps
+}
+
+// strict handling shortcut:
+if err := status.RequireNoPaymentError(); err != nil {
+	return err
+}
+```
+
 ## Production Best Practices
 
 - Use client-level `WithToken(...)` to avoid repetitive token wiring.
