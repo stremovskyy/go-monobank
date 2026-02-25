@@ -31,6 +31,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
+          cache-dependency-path: go.mod
 
       - name: Verify formatting
         run: |
