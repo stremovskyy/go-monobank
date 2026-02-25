@@ -47,9 +47,9 @@ const (
 // MerchantPaymInfo mirrors docs "merchantPaymInfo" (minimal subset).
 // You can extend it later without breaking callers.
 type MerchantPaymInfo struct {
-	Reference    string   `json:"reference,omitempty"`
-	Destination  string   `json:"destination,omitempty"`
-	Comment      string   `json:"comment,omitempty"`
+	Reference      string   `json:"reference,omitempty"`
+	Destination    string   `json:"destination,omitempty"`
+	Comment        string   `json:"comment,omitempty"`
 	CustomerEmails []string `json:"customerEmails,omitempty"`
 
 	// NOTE: docs contain more fields (discounts, basketOrder, etc).
@@ -70,14 +70,14 @@ type InvoiceCreateResponse struct {
 // WalletPaymentResponse is returned by POST /api/merchant/wallet/payment.
 // Also resembles some other payment-related responses.
 type WalletPaymentResponse struct {
-	InvoiceID      string        `json:"invoiceId"`
-	TDSURL         *string       `json:"tdsUrl,omitempty"`
-	Status         InvoiceStatus `json:"status"`
-	FailureReason  *string       `json:"failureReason,omitempty"`
-	Amount         int64         `json:"amount"`
-	Currency       CurrencyCode  `json:"ccy"`
-	CreatedDate    time.Time     `json:"createdDate"`
-	ModifiedDate   time.Time     `json:"modifiedDate"`
+	InvoiceID     string        `json:"invoiceId"`
+	TDSURL        *string       `json:"tdsUrl,omitempty"`
+	Status        InvoiceStatus `json:"status"`
+	FailureReason *string       `json:"failureReason,omitempty"`
+	Amount        int64         `json:"amount"`
+	Currency      CurrencyCode  `json:"ccy"`
+	CreatedDate   time.Time     `json:"createdDate"`
+	ModifiedDate  time.Time     `json:"modifiedDate"`
 }
 
 // InvoiceStatusResponse is returned by GET /api/merchant/invoice/status
@@ -98,10 +98,10 @@ type InvoiceStatusResponse struct {
 	Reference   *string `json:"reference,omitempty"`
 	Destination *string `json:"destination,omitempty"`
 
-	CancelList   []CancelItem   `json:"cancelList,omitempty"`
-	PaymentInfo  *PaymentInfo   `json:"paymentInfo,omitempty"`
-	WalletData   *WalletData    `json:"walletData,omitempty"`
-	TipsInfo     *TipsInfo      `json:"tipsInfo,omitempty"`
+	CancelList  []CancelItem `json:"cancelList,omitempty"`
+	PaymentInfo *PaymentInfo `json:"paymentInfo,omitempty"`
+	WalletData  *WalletData  `json:"walletData,omitempty"`
+	TipsInfo    *TipsInfo    `json:"tipsInfo,omitempty"`
 }
 
 type CancelItem struct {
@@ -115,18 +115,18 @@ type CancelItem struct {
 	RRN          *string `json:"rrn,omitempty"`
 	ExtRef       *string `json:"extRef,omitempty"`
 
-	MaskedPan    *string `json:"maskedPan,omitempty"`
+	MaskedPan *string `json:"maskedPan,omitempty"`
 }
 
 type PaymentInfo struct {
-	MaskedPan    *string `json:"maskedPan,omitempty"`
-	ApprovalCode *string `json:"approvalCode,omitempty"`
-	RRN          *string `json:"rrn,omitempty"`
-	TranID       *string `json:"tranId,omitempty"`
-	Terminal     *string `json:"terminal,omitempty"`
+	MaskedPan     *string `json:"maskedPan,omitempty"`
+	ApprovalCode  *string `json:"approvalCode,omitempty"`
+	RRN           *string `json:"rrn,omitempty"`
+	TranID        *string `json:"tranId,omitempty"`
+	Terminal      *string `json:"terminal,omitempty"`
 	PaymentSystem *string `json:"paymentSystem,omitempty"`
 	PaymentMethod *string `json:"paymentMethod,omitempty"`
-	Fee          *int64   `json:"fee,omitempty"`
+	Fee           *int64  `json:"fee,omitempty"`
 }
 
 type WalletData struct {

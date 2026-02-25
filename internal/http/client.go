@@ -46,7 +46,7 @@ func NewClient(opts *Options) *Client {
 	}
 
 	hc := &http.Client{
-		Timeout: opts.Timeout,
+		Timeout:   opts.Timeout,
 		Transport: tr,
 	}
 

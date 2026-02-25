@@ -6,5 +6,5 @@ const (
 	PathInvoiceCreate = "/api/merchant/invoice/create"
 	PathInvoiceStatus = "/api/merchant/invoice/status"
 	PathWalletPayment = "/api/merchant/wallet/payment"
-	PathPubKey       = "/api/merchant/pubkey"
+	PathPubKey        = "/api/merchant/pubkey"
 )
