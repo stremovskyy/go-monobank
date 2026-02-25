@@ -12,6 +12,7 @@ import (
 //   - Verification (invoice/create + saveCardData)
 //   - Payment by card token (wallet/payment)
 //   - Status (invoice/status)
+//   - Fiscal checks (invoice/fiscal-checks)
 //   - Webhook parsing + signature verification (X-Sign)
 type Monobank interface {
 	// Verification creates an invoice with saveCardData (tokenization).
@@ -25,6 +26,8 @@ type Monobank interface {
 
 	// Status returns current invoice status (invoice/status).
 	Status(request *Request, opts ...RunOption) (*InvoiceStatusResponse, error)
+	// FiscalChecks returns PRRO fiscal checks for invoice (invoice/fiscal-checks).
+	FiscalChecks(request *Request, opts ...RunOption) (*FiscalChecksResponse, error)
 
 	// PublicKey fetches merchant webhook verification public key (pubkey).
 	PublicKey(request *Request, opts ...RunOption) (*PublicKeyResponse, error)

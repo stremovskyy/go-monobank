@@ -17,6 +17,7 @@ This library follows the same style as other `stremovskyy/*` SDKs:
 - Card tokenization (verification flow): `POST /api/merchant/invoice/create`
 - Payment by saved card token: `POST /api/merchant/wallet/payment`
 - Invoice status lookup: `GET /api/merchant/invoice/status`
+- PRRO fiscal checks by invoice: `GET /api/merchant/invoice/fiscal-checks`
 - Webhook parsing and signature verification (`X-Sign`, ECDSA SHA-256)
 - Structured API and transport errors with `errors.Is(...)` support
 - Business-level payment error helpers (`PaymentError`)
@@ -41,6 +42,7 @@ go get github.com/stremovskyy/go-monobank@latest
 | `VerificationLink` | `POST /api/merchant/invoice/create` | Convenience helper that returns parsed `pageUrl` |
 | `Payment` | `POST /api/merchant/wallet/payment` | Charge by `cardToken` |
 | `Status` | `GET /api/merchant/invoice/status` | Fetch current invoice state |
+| `FiscalChecks` | `GET /api/merchant/invoice/fiscal-checks` | Fetch PRRO fiscal checks for invoice |
 | `PublicKey` | `GET /api/merchant/pubkey` | Fetch webhook verification key |
 | `ParseWebhook` | N/A | Parse webhook JSON body |
 | `VerifyWebhook` | N/A | Verify `X-Sign` against raw body |
@@ -76,7 +78,7 @@ func main() {
 			WithAmount(100). // 1.00 UAH in minor units
 			WithCurrency(go_monobank.CurrencyUAH).
 			WithRedirectURL("https://example.com/return").
-			WithWebHookURL("https://example.com/webhook").
+			WithWebhookURL("https://example.com/webhook").
 			WithReference("verify-card-001").
 			WithDestination("Card verification").
 			SaveCard("customer-wallet-123"),
@@ -154,6 +156,34 @@ if status.IsFinal() && status.IsSuccess() {
 }
 ```
 
+## Fiscal Checks (PRRO)
+
+API docs: <https://monobank.ua/api-docs/acquiring/extras/prro/get--api--merchant--invoice--fiscal-checks>
+
+```go
+fiscal, err := client.FiscalChecks(
+	go_monobank.NewRequest().
+		WithInvoiceID(invoiceID),
+)
+if err != nil {
+	return err
+}
+
+if last, ok := fiscal.LastCheck(); ok {
+	fmt.Println("last check id:", last.ID)
+	fmt.Println("last check status:", last.Status)
+	fmt.Println("is done:", last.IsDone())
+
+	if taxURL, err := last.ParsedTaxURL(); err == nil && taxURL != nil {
+		fmt.Println("tax URL:", taxURL.String())
+	}
+}
+
+fmt.Println("done checks:", len(fiscal.DoneChecks()))
+fmt.Println("pending checks:", len(fiscal.PendingChecks()))
+fmt.Println("failed checks:", len(fiscal.FailedChecks()))
+```
+
 ## Webhook Verification
 
 ```go
@@ -192,6 +222,11 @@ Webhook key resolution order:
 - `WithClient(*http.Client)` injects custom HTTP client.
 - `WithWebhookPublicKeyBase64(key)` sets webhook key (base64 PEM).
 - `WithWebhookPublicKeyPEM(pemBytes)` sets webhook key (raw PEM).
+
+Request convenience:
+- `WithWebhookURL(...)` (alias to `WithWebHookURL(...)`)
+- `WithWalletID(...)`
+- `EnableSaveCard()` / `DisableSaveCard()`
 
 ## Logging
 
@@ -284,6 +319,7 @@ Run from repository root:
 MONO_TOKEN=... go run ./examples/verification
 MONO_TOKEN=... CARD_TOKEN=... go run ./examples/payment_by_token
 MONO_TOKEN=... INVOICE_ID=... go run ./examples/status
+MONO_TOKEN=... INVOICE_ID=... go run ./examples/fiscal_checks
 MONO_TOKEN=... go run ./examples/webhook_http
 ```
 

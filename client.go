@@ -185,6 +185,37 @@ func (c *client) Status(request *Request, runOpts ...RunOption) (*InvoiceStatusR
 	return &resp, nil
 }
 
+// FiscalChecks returns PRRO fiscal checks for invoice.
+// Under the hood: GET /api/merchant/invoice/fiscal-checks?invoiceId=...
+func (c *client) FiscalChecks(request *Request, runOpts ...RunOption) (*FiscalChecksResponse, error) {
+	if request == nil {
+		return nil, &ValidationError{Op: "fiscalChecks", Msg: "request is nil"}
+	}
+	// Token
+	token := c.resolveToken(request)
+	if token == "" {
+		return nil, &ValidationError{Op: "fiscalChecks", Msg: "X-Token is required (set request.WithToken(...) or client WithToken(...))"}
+	}
+
+	invoiceID := request.GetInvoiceID()
+	if invoiceID == "" {
+		return nil, &ValidationError{Op: "fiscalChecks", Msg: "invoiceId is required (set request.WithInvoiceID(...))"}
+	}
+
+	opts := collectRunOptions(runOpts)
+	endpoint := c.cfg.baseURL + consts.PathInvoiceFiscalChecks + "?invoiceId=" + url.QueryEscape(invoiceID)
+	if opts.isDryRun() {
+		opts.handleDryRun(endpoint, map[string]string{"invoiceId": invoiceID})
+		return nil, nil
+	}
+
+	var resp FiscalChecksResponse
+	if err := c.doJSON(context.Background(), http.MethodGet, consts.PathInvoiceFiscalChecks+"?invoiceId="+url.QueryEscape(invoiceID), token, request, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // PublicKey fetches pubkey (base64-encoded PEM) used for webhook signature verification.
 func (c *client) PublicKey(request *Request, runOpts ...RunOption) (*PublicKeyResponse, error) {
 	if request == nil {

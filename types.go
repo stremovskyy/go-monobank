@@ -1,6 +1,7 @@
 package go_monobank
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strings"
@@ -167,6 +168,136 @@ type InvoiceStatusResponse struct {
 	PaymentInfo *PaymentInfo `json:"paymentInfo,omitempty"`
 	WalletData  *WalletData  `json:"walletData,omitempty"`
 	TipsInfo    *TipsInfo    `json:"tipsInfo,omitempty"`
+}
+
+// FiscalChecksResponse is returned by GET /api/merchant/invoice/fiscal-checks.
+type FiscalChecksResponse struct {
+	Checks []FiscalCheck `json:"checks"`
+}
+
+// HasChecks reports whether response contains at least one fiscal check.
+func (r *FiscalChecksResponse) HasChecks() bool {
+	return r != nil && len(r.Checks) > 0
+}
+
+// FirstCheck returns the first fiscal check and true if present.
+func (r *FiscalChecksResponse) FirstCheck() (*FiscalCheck, bool) {
+	if r == nil || len(r.Checks) == 0 {
+		return nil, false
+	}
+	return &r.Checks[0], true
+}
+
+// LastCheck returns the last fiscal check and true if present.
+func (r *FiscalChecksResponse) LastCheck() (*FiscalCheck, bool) {
+	if r == nil || len(r.Checks) == 0 {
+		return nil, false
+	}
+	return &r.Checks[len(r.Checks)-1], true
+}
+
+// DoneChecks returns checks that are marked as successful/finalized.
+func (r *FiscalChecksResponse) DoneChecks() []FiscalCheck {
+	if r == nil || len(r.Checks) == 0 {
+		return nil
+	}
+	out := make([]FiscalCheck, 0, len(r.Checks))
+	for _, check := range r.Checks {
+		if check.IsDone() {
+			out = append(out, check)
+		}
+	}
+	return out
+}
+
+// FailedChecks returns checks with terminal error-like statuses.
+func (r *FiscalChecksResponse) FailedChecks() []FiscalCheck {
+	if r == nil || len(r.Checks) == 0 {
+		return nil
+	}
+	out := make([]FiscalCheck, 0, len(r.Checks))
+	for _, check := range r.Checks {
+		if check.IsFailed() {
+			out = append(out, check)
+		}
+	}
+	return out
+}
+
+// PendingChecks returns checks that are neither done nor failed.
+func (r *FiscalChecksResponse) PendingChecks() []FiscalCheck {
+	if r == nil || len(r.Checks) == 0 {
+		return nil
+	}
+	out := make([]FiscalCheck, 0, len(r.Checks))
+	for _, check := range r.Checks {
+		if check.IsPending() {
+			out = append(out, check)
+		}
+	}
+	return out
+}
+
+// FiscalCheck is one item from FiscalChecksResponse.
+type FiscalCheck struct {
+	ID                  string `json:"id"`
+	Type                string `json:"type"`
+	Status              string `json:"status"`
+	StatusDescription   string `json:"statusDescription"`
+	TaxURL              string `json:"taxUrl"`
+	File                string `json:"file"`
+	FiscalizationSource string `json:"fiscalizationSource"`
+}
+
+// IsDone reports whether check is completed successfully.
+func (c FiscalCheck) IsDone() bool {
+	status := strings.ToLower(strings.TrimSpace(c.Status))
+	return status == "done" || status == "success" || status == "ok"
+}
+
+// IsFailed reports whether check has terminal error-like state.
+func (c FiscalCheck) IsFailed() bool {
+	status := strings.ToLower(strings.TrimSpace(c.Status))
+	switch status {
+	case "failed", "failure", "error", "rejected", "canceled", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsPending reports whether check is neither done nor failed.
+func (c FiscalCheck) IsPending() bool {
+	return !c.IsDone() && !c.IsFailed()
+}
+
+// ParsedTaxURL parses taxUrl as an absolute URL.
+func (c FiscalCheck) ParsedTaxURL() (*url.URL, error) {
+	raw := strings.TrimSpace(c.TaxURL)
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("fiscal check: cannot parse taxUrl %q: %w", c.TaxURL, err)
+	}
+	if !parsed.IsAbs() {
+		return nil, fmt.Errorf("fiscal check: taxUrl is not absolute: %q", c.TaxURL)
+	}
+	return parsed, nil
+}
+
+// DecodedFile decodes base64-encoded fiscal check file payload.
+func (c FiscalCheck) DecodedFile() ([]byte, error) {
+	encoded := strings.TrimSpace(c.File)
+	if encoded == "" {
+		return nil, nil
+	}
+	out, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("fiscal check: decode file: %w", err)
+	}
+	return out, nil
 }
 
 // IsSuccess reports whether invoice status is successful.

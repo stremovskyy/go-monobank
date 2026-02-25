@@ -1,6 +1,9 @@
 package go_monobank
 
-import "testing"
+import (
+	"encoding/base64"
+	"testing"
+)
 
 func TestRequestConvenienceMethods(t *testing.T) {
 	req := NewRequest().
@@ -116,5 +119,83 @@ func TestInvoiceCreateResponseParsedPageURL(t *testing.T) {
 	resp.PageURL = "/relative"
 	if _, err := resp.ParsedPageURL(); err == nil {
 		t.Fatalf("expected error for relative URL")
+	}
+}
+
+func TestFiscalCheckConvenienceMethods(t *testing.T) {
+	file := base64.StdEncoding.EncodeToString([]byte(`{"key":"value"}`))
+
+	resp := &FiscalChecksResponse{
+		Checks: []FiscalCheck{
+			{ID: "1", Status: "done", TaxURL: "https://tax.example.com/check/1", File: file},
+			{ID: "2", Status: "processing"},
+			{ID: "3", Status: "failed"},
+		},
+	}
+
+	if !resp.HasChecks() {
+		t.Fatalf("expected HasChecks() to be true")
+	}
+	if got := len(resp.DoneChecks()); got != 1 {
+		t.Fatalf("DoneChecks() len = %d, want 1", got)
+	}
+	if got := len(resp.PendingChecks()); got != 1 {
+		t.Fatalf("PendingChecks() len = %d, want 1", got)
+	}
+	if got := len(resp.FailedChecks()); got != 1 {
+		t.Fatalf("FailedChecks() len = %d, want 1", got)
+	}
+
+	first, ok := resp.FirstCheck()
+	if !ok || first == nil || first.ID != "1" {
+		t.Fatalf("unexpected FirstCheck() result: ok=%v first=%+v", ok, first)
+	}
+	last, ok := resp.LastCheck()
+	if !ok || last == nil || last.ID != "3" {
+		t.Fatalf("unexpected LastCheck() result: ok=%v last=%+v", ok, last)
+	}
+
+	parsedURL, err := first.ParsedTaxURL()
+	if err != nil {
+		t.Fatalf("ParsedTaxURL() unexpected error: %v", err)
+	}
+	if parsedURL == nil || parsedURL.String() != "https://tax.example.com/check/1" {
+		t.Fatalf("unexpected ParsedTaxURL() value: %+v", parsedURL)
+	}
+
+	decoded, err := first.DecodedFile()
+	if err != nil {
+		t.Fatalf("DecodedFile() unexpected error: %v", err)
+	}
+	if string(decoded) != `{"key":"value"}` {
+		t.Fatalf("DecodedFile() = %q, want %q", string(decoded), `{"key":"value"}`)
+	}
+}
+
+func TestFiscalCheckConvenienceMethods_EdgeCases(t *testing.T) {
+	var nilResp *FiscalChecksResponse
+	if nilResp.HasChecks() {
+		t.Fatalf("expected nil response HasChecks() to be false")
+	}
+	if first, ok := nilResp.FirstCheck(); ok || first != nil {
+		t.Fatalf("expected nil response FirstCheck() to return nil,false")
+	}
+	if last, ok := nilResp.LastCheck(); ok || last != nil {
+		t.Fatalf("expected nil response LastCheck() to return nil,false")
+	}
+
+	check := FiscalCheck{}
+	if !check.IsPending() {
+		t.Fatalf("empty status should be treated as pending")
+	}
+
+	check.TaxURL = "/relative"
+	if _, err := check.ParsedTaxURL(); err == nil {
+		t.Fatalf("expected ParsedTaxURL() error for relative URL")
+	}
+
+	check.File = "%%%bad-base64%%%"
+	if _, err := check.DecodedFile(); err == nil {
+		t.Fatalf("expected DecodedFile() error for invalid base64")
 	}
 }
