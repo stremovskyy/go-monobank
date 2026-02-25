@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Build artifacts
+*.exe
+*.out
+*.test
+coverage.out
+bin/
+dist/
+
+# Go workspace files
+go.work
+go.work.sum
