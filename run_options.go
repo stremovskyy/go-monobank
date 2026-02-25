@@ -2,7 +2,6 @@ package go_monobank
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/stremovskyy/go-monobank/log"
 )
@@ -71,5 +70,5 @@ func defaultDryRunHandler(endpoint string, payload any) {
 		dryRunLogger.Info("Dry run payload: unable to marshal %T: %v", payload, err)
 		return
 	}
-	dryRunLogger.Info("Dry run payload:\n%s", fmt.Sprintf("%s", out))
+	dryRunLogger.Info("Dry run payload:\n%s", string(out))
 }
