@@ -1,6 +1,11 @@
 package go_monobank
 
-import "time"
+import (
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+)
 
 // CurrencyCode is ISO 4217 numeric code.
 type CurrencyCode int32
@@ -44,6 +49,26 @@ const (
 	InvoiceExpired    InvoiceStatus = "expired"
 )
 
+// IsSuccess reports whether status indicates successful payment completion.
+func (s InvoiceStatus) IsSuccess() bool {
+	return s == InvoiceSuccess
+}
+
+// IsFailure reports whether status indicates terminal non-success outcome.
+func (s InvoiceStatus) IsFailure() bool {
+	return s == InvoiceFailure || s == InvoiceReversed || s == InvoiceExpired
+}
+
+// IsPending reports whether status indicates non-final in-progress state.
+func (s InvoiceStatus) IsPending() bool {
+	return s == InvoiceCreated || s == InvoiceProcessing
+}
+
+// IsFinal reports whether status is final (success or non-success terminal).
+func (s InvoiceStatus) IsFinal() bool {
+	return s.IsSuccess() || s.IsFailure()
+}
+
 // MerchantPaymInfo mirrors docs "merchantPaymInfo" (minimal subset).
 // You can extend it later without breaking callers.
 type MerchantPaymInfo struct {
@@ -67,6 +92,21 @@ type InvoiceCreateResponse struct {
 	PageURL   string `json:"pageUrl"`
 }
 
+// ParsedPageURL parses response pageUrl as an absolute URL.
+func (r *InvoiceCreateResponse) ParsedPageURL() (*url.URL, error) {
+	if r == nil {
+		return nil, fmt.Errorf("invoice create response is nil")
+	}
+	parsed, err := url.Parse(strings.TrimSpace(r.PageURL))
+	if err != nil {
+		return nil, fmt.Errorf("invoice create response: cannot parse pageUrl %q: %w", r.PageURL, err)
+	}
+	if !parsed.IsAbs() {
+		return nil, fmt.Errorf("invoice create response: pageUrl is not absolute: %q", r.PageURL)
+	}
+	return parsed, nil
+}
+
 // WalletPaymentResponse is returned by POST /api/merchant/wallet/payment.
 // Also resembles some other payment-related responses.
 type WalletPaymentResponse struct {
@@ -78,6 +118,31 @@ type WalletPaymentResponse struct {
 	Currency      CurrencyCode  `json:"ccy"`
 	CreatedDate   time.Time     `json:"createdDate"`
 	ModifiedDate  time.Time     `json:"modifiedDate"`
+}
+
+// IsSuccess reports whether wallet payment status is successful.
+func (r *WalletPaymentResponse) IsSuccess() bool {
+	return r != nil && r.Status.IsSuccess()
+}
+
+// IsFailure reports whether wallet payment status is final non-success.
+func (r *WalletPaymentResponse) IsFailure() bool {
+	return r != nil && r.Status.IsFailure()
+}
+
+// IsPending reports whether wallet payment status is not final yet.
+func (r *WalletPaymentResponse) IsPending() bool {
+	return r != nil && r.Status.IsPending()
+}
+
+// IsFinal reports whether wallet payment status is final.
+func (r *WalletPaymentResponse) IsFinal() bool {
+	return r != nil && r.Status.IsFinal()
+}
+
+// Requires3DS reports whether response contains non-empty tdsUrl.
+func (r *WalletPaymentResponse) Requires3DS() bool {
+	return r != nil && r.TDSURL != nil && strings.TrimSpace(*r.TDSURL) != ""
 }
 
 // InvoiceStatusResponse is returned by GET /api/merchant/invoice/status
@@ -102,6 +167,26 @@ type InvoiceStatusResponse struct {
 	PaymentInfo *PaymentInfo `json:"paymentInfo,omitempty"`
 	WalletData  *WalletData  `json:"walletData,omitempty"`
 	TipsInfo    *TipsInfo    `json:"tipsInfo,omitempty"`
+}
+
+// IsSuccess reports whether invoice status is successful.
+func (r *InvoiceStatusResponse) IsSuccess() bool {
+	return r != nil && r.Status.IsSuccess()
+}
+
+// IsFailure reports whether invoice status is final non-success.
+func (r *InvoiceStatusResponse) IsFailure() bool {
+	return r != nil && r.Status.IsFailure()
+}
+
+// IsPending reports whether invoice status is not final yet.
+func (r *InvoiceStatusResponse) IsPending() bool {
+	return r != nil && r.Status.IsPending()
+}
+
+// IsFinal reports whether invoice status is final.
+func (r *InvoiceStatusResponse) IsFinal() bool {
+	return r != nil && r.Status.IsFinal()
 }
 
 type CancelItem struct {

@@ -54,7 +54,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 
 	go_monobank "github.com/stremovskyy/go-monobank"
@@ -86,7 +85,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	payURL, err := url.Parse(resp.PageURL)
+	payURL, err := resp.ParsedPageURL()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,6 +104,9 @@ That means if you call both methods one after another, you create **two separate
 Best practice:
 - Use `Verification(...)` when you need `invoiceId` and `pageUrl`.
 - Use `VerificationLink(...)` only when you need parsed `*url.URL` and do not need the original response object.
+
+Convenience helper:
+- If you already called `Verification(...)`, use `resp.ParsedPageURL()` to parse/validate `pageUrl` without a second API request.
 
 ## Payment by Card Token
 
@@ -145,6 +147,10 @@ if pe := status.PaymentError(); pe != nil {
 	for _, m := range pe.Metas {
 		fmt.Printf("code=%s text=%s contact=%s\n", m.Code, m.Text, m.Contact)
 	}
+}
+
+if status.IsFinal() && status.IsSuccess() {
+	fmt.Println("payment completed")
 }
 ```
 

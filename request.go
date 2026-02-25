@@ -136,6 +136,11 @@ func (r *Request) WithWebHookURL(url string) *Request {
 	return r
 }
 
+// WithWebhookURL is an alias for WithWebHookURL.
+func (r *Request) WithWebhookURL(url string) *Request {
+	return r.WithWebHookURL(url)
+}
+
 func (r *Request) WithValiditySeconds(seconds int64) *Request {
 	if seconds <= 0 {
 		return r
@@ -189,6 +194,28 @@ func (r *Request) SaveCard(walletID string) *Request {
 	pm := r.ensurePaymentMethod()
 	pm.SaveCard = true
 	pm.WalletID = &walletID
+	return r
+}
+
+// WithWalletID sets wallet identifier without changing SaveCard flag.
+func (r *Request) WithWalletID(walletID string) *Request {
+	walletID = strings.TrimSpace(walletID)
+	if walletID == "" {
+		return r
+	}
+	r.ensurePaymentMethod().WalletID = &walletID
+	return r
+}
+
+// EnableSaveCard enables saveCardData for invoice/create.
+func (r *Request) EnableSaveCard() *Request {
+	r.ensurePaymentMethod().SaveCard = true
+	return r
+}
+
+// DisableSaveCard disables saveCardData for invoice/create.
+func (r *Request) DisableSaveCard() *Request {
+	r.ensurePaymentMethod().SaveCard = false
 	return r
 }
 
