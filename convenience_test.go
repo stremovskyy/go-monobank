@@ -2,6 +2,7 @@ package go_monobank
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"testing"
 )
 
@@ -197,5 +198,37 @@ func TestFiscalCheckConvenienceMethods_EdgeCases(t *testing.T) {
 	check.File = "%%%bad-base64%%%"
 	if _, err := check.DecodedFile(); err == nil {
 		t.Fatalf("expected DecodedFile() error for invalid base64")
+	}
+}
+
+func TestFiscalChecksUnmarshal_DocsSampleShape(t *testing.T) {
+	raw := []byte(`{
+  "checks": [
+    {
+      "id": "a2fd4aef-cdb8-4e25-9b36-b6d4672c554d",
+      "type": "sale",
+      "status": "done",
+      "statusDescription": "",
+      "taxUrl": "https://cabinet.tax.gov.ua/cashregs/check",
+      "file": "eyJzYW1wbGUiOiAidmFsdWUifQ==",
+      "fiscalizationSource": "monopay"
+    }
+  ]
+}`)
+
+	var resp FiscalChecksResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatalf("json.Unmarshal() error: %v", err)
+	}
+	if got := len(resp.Checks); got != 1 {
+		t.Fatalf("checks len = %d, want 1", got)
+	}
+
+	check := resp.Checks[0]
+	if check.ID == "" || check.Type != "sale" || check.Status != "done" {
+		t.Fatalf("unexpected parsed check: %+v", check)
+	}
+	if !check.IsDone() || check.IsFailed() || check.IsPending() {
+		t.Fatalf("unexpected status helpers for %+v", check)
 	}
 }

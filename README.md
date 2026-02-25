@@ -184,6 +184,9 @@ fmt.Println("pending checks:", len(fiscal.PendingChecks()))
 fmt.Println("failed checks:", len(fiscal.FailedChecks()))
 ```
 
+If you get `checks: 0`, it usually means there are no fiscal checks for this invoice yet
+(for example, invoice was created without fiscalization or check generation is still pending).
+
 ## Webhook Verification
 
 ```go
