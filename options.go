@@ -7,6 +7,7 @@ import (
 
 	"github.com/stremovskyy/go-monobank/consts"
 	internalhttp "github.com/stremovskyy/go-monobank/internal/http"
+	"github.com/stremovskyy/recorder"
 )
 
 type clientConfig struct {
@@ -14,6 +15,7 @@ type clientConfig struct {
 
 	httpOptions *internalhttp.Options
 	httpClient  *http.Client
+	recorder    recorder.Recorder
 
 	// defaultToken is used when request.Merchant.Token is empty.
 	defaultToken string
@@ -76,6 +78,13 @@ func WithClient(cl *http.Client) Option {
 		if cl != nil {
 			c.httpOptions.Timeout = cl.Timeout
 		}
+	}
+}
+
+// WithRecorder attaches request/response recorder.
+func WithRecorder(rec recorder.Recorder) Option {
+	return func(c *clientConfig) {
+		c.recorder = rec
 	}
 }
 

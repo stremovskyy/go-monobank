@@ -320,13 +320,19 @@ func (c *client) doJSON(ctx context.Context, method, path string, token string, 
 		baseURL = strings.TrimRight(consts.DefaultBaseURL, "/")
 	}
 	endpoint := baseURL + path
+	requestID := recorderRequestID()
+	recordTags := recorderTags(method, path, request, 0)
+
 	logger.Info("HTTP request: method=%s path=%s", method, path)
 	logger.Debug("HTTP request: endpoint=%s", endpoint)
+
+	var requestBody []byte
 	if payload == nil {
 		logger.Debug("HTTP request: payload=<nil>")
 	} else if body, err := json.Marshal(payload); err != nil {
 		logger.Debug("HTTP request: payload marshal error for %T: %v", payload, err)
 	} else {
+		requestBody = body
 		logger.Debug("HTTP request: payload=%s", trimBody(body, 4096))
 	}
 
@@ -340,7 +346,9 @@ func (c *client) doJSON(ctx context.Context, method, path string, token string, 
 	}
 	if tok == "" {
 		logger.Error("HTTP request: token is empty for method=%s path=%s", method, path)
-		return &ValidationError{Op: "auth", Msg: "token is empty"}
+		err := &ValidationError{Op: "auth", Msg: "token is empty"}
+		c.recordError(ctx, requestID, err, recordTags)
+		return err
 	}
 
 	// Apply timeout from client config. If timeout is 0, internalhttp.WithTimeout returns original ctx.
@@ -354,10 +362,13 @@ func (c *client) doJSON(ctx context.Context, method, path string, token string, 
 	req, err := internalhttp.NewJSONRequest(ctx, method, endpoint, payload)
 	if err != nil {
 		logger.Error("HTTP request: cannot build request method=%s path=%s err=%v", method, path, err)
-		return &EncodeError{Op: "request", Msg: "build json request", Cause: err}
+		encodeErr := &EncodeError{Op: "request", Msg: "build json request", Cause: err}
+		c.recordError(ctx, requestID, encodeErr, recordTags)
+		return encodeErr
 	}
 
 	// Headers
+	req.Header.Set("X-Request-ID", requestID)
 	req.Header.Set("X-Token", tok)
 	if request != nil && request.Merchant != nil {
 		if request.Merchant.CMS != nil && strings.TrimSpace(*request.Merchant.CMS) != "" {
@@ -370,20 +381,29 @@ func (c *client) doJSON(ctx context.Context, method, path string, token string, 
 
 	if c == nil || c.http == nil {
 		logger.Error("HTTP request: http client is nil method=%s path=%s", method, path)
-		return &UnexpectedResponseError{Op: "client", Method: method, Endpoint: path, Msg: "http client is nil"}
+		clientErr := &UnexpectedResponseError{Op: "client", Method: method, Endpoint: path, Msg: "http client is nil"}
+		c.recordError(ctx, requestID, clientErr, recordTags)
+		return clientErr
 	}
+
+	c.recordRequest(ctx, requestID, requestPayload(requestBody, method, endpoint), recordTags)
 
 	resp, body, err := c.http.Do(req)
 	if err != nil {
 		logger.Error("HTTP request: transport error method=%s path=%s err=%v", method, path, err)
-		return &TransportError{Op: "http.do", Method: method, URL: endpoint, Cause: err}
+		transportErr := &TransportError{Op: "http.do", Method: method, URL: endpoint, Cause: err}
+		c.recordError(ctx, requestID, transportErr, recordTags)
+		return transportErr
 	}
 	if resp == nil {
 		logger.Error("HTTP request: nil response method=%s path=%s", method, path)
-		return &UnexpectedResponseError{Op: "http.do", Method: method, Endpoint: path, Msg: "response is nil"}
+		nilRespErr := &UnexpectedResponseError{Op: "http.do", Method: method, Endpoint: path, Msg: "response is nil"}
+		c.recordError(ctx, requestID, nilRespErr, recordTags)
+		return nilRespErr
 	}
 	logger.Info("HTTP response: method=%s path=%s status=%d", method, path, resp.StatusCode)
 	logger.Debug("HTTP response: method=%s path=%s body=%s", method, path, trimBody(body, 4096))
+	c.recordResponse(ctx, requestID, responsePayload(body, resp.StatusCode), recorderTags(method, path, request, resp.StatusCode))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errCode, desc := parseAPIErrorBody(body)
@@ -427,7 +447,7 @@ func (c *client) doJSON(ctx context.Context, method, path string, token string, 
 		if apiErr.RetryAfter != nil {
 			logger.Warn("HTTP response: retry_after=%s for method=%s path=%s", apiErr.RetryAfter.String(), method, path)
 		}
-
+		c.recordError(ctx, requestID, apiErr, recorderTags(method, path, request, resp.StatusCode))
 		return apiErr
 	}
 
@@ -437,15 +457,145 @@ func (c *client) doJSON(ctx context.Context, method, path string, token string, 
 	}
 	if len(body) == 0 {
 		logger.Error("HTTP response: empty body method=%s path=%s status=%d", method, path, resp.StatusCode)
-		return &UnexpectedResponseError{Op: "decode", Method: method, Endpoint: path, StatusCode: resp.StatusCode, Msg: "empty response body"}
+		decodeErr := &UnexpectedResponseError{Op: "decode", Method: method, Endpoint: path, StatusCode: resp.StatusCode, Msg: "empty response body"}
+		c.recordError(ctx, requestID, decodeErr, recorderTags(method, path, request, resp.StatusCode))
+		return decodeErr
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		logger.Error("HTTP response: decode error method=%s path=%s err=%v", method, path, err)
-		return &DecodeError{Op: "decode", Msg: "json unmarshal response", Body: trimBody(body, 4096), Cause: err}
+		decodeErr := &DecodeError{Op: "decode", Msg: "json unmarshal response", Body: trimBody(body, 4096), Cause: err}
+		c.recordError(ctx, requestID, decodeErr, recorderTags(method, path, request, resp.StatusCode))
+		return decodeErr
 	}
 	logger.Debug("HTTP response: decoded into %T", out)
 
 	return nil
+}
+
+func (c *client) recordRequest(ctx context.Context, requestID string, payload []byte, tags map[string]string) {
+	if c == nil || c.cfg == nil || c.cfg.recorder == nil || len(payload) == 0 {
+		return
+	}
+
+	if err := c.cfg.recorder.RecordRequest(ctx, nil, requestID, payload, tags); err != nil {
+		logger.Debug("recorder request error: %v", err)
+	}
+}
+
+func (c *client) recordResponse(ctx context.Context, requestID string, payload []byte, tags map[string]string) {
+	if c == nil || c.cfg == nil || c.cfg.recorder == nil || len(payload) == 0 {
+		return
+	}
+
+	if err := c.cfg.recorder.RecordResponse(ctx, nil, requestID, payload, tags); err != nil {
+		logger.Debug("recorder response error: %v", err)
+	}
+}
+
+func (c *client) recordError(ctx context.Context, requestID string, err error, tags map[string]string) {
+	if c == nil || c.cfg == nil || c.cfg.recorder == nil || err == nil || strings.TrimSpace(requestID) == "" {
+		return
+	}
+
+	if recErr := c.cfg.recorder.RecordError(ctx, nil, requestID, err, tags); recErr != nil {
+		logger.Debug("recorder error record failed: %v", recErr)
+	}
+}
+
+func recorderRequestID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 10)
+}
+
+func requestPayload(body []byte, method, endpoint string) []byte {
+	if len(body) > 0 {
+		return body
+	}
+	payload := map[string]string{
+		"method": method,
+		"url":    endpoint,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return []byte(`{"kind":"request"}`)
+	}
+	return encoded
+}
+
+func responsePayload(body []byte, statusCode int) []byte {
+	if len(body) > 0 {
+		return body
+	}
+	payload := map[string]any{
+		"status_code": statusCode,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return []byte(`{"kind":"response"}`)
+	}
+	return encoded
+}
+
+func recorderTags(method, path string, request *Request, statusCode int) map[string]string {
+	cleanPath := normalizeRecorderPath(path)
+	tags := map[string]string{
+		"gateway": "monobank",
+		"method":  strings.ToUpper(strings.TrimSpace(method)),
+		"path":    cleanPath,
+	}
+	if operation := recorderOperation(cleanPath); operation != "" {
+		tags["operation"] = operation
+	}
+
+	reference := ""
+	if request != nil {
+		if invoiceID := strings.TrimSpace(request.GetInvoiceID()); invoiceID != "" {
+			tags["invoice_id"] = invoiceID
+		}
+		if payInfo := request.GetMerchantPaymInfo(); payInfo != nil {
+			if ref := strings.TrimSpace(payInfo.Reference); ref != "" {
+				tags["reference"] = ref
+				reference = ref
+			}
+		}
+	}
+	if _, exists := tags["invoice_id"]; !exists && reference != "" {
+		// For wallet payment, internal invoice UUID is sent as merchant reference.
+		tags["invoice_id"] = reference
+	}
+
+	if statusCode > 0 {
+		tags["status_code"] = strconv.Itoa(statusCode)
+	}
+
+	return tags
+}
+
+func normalizeRecorderPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return path
+	}
+	if idx := strings.Index(path, "?"); idx >= 0 {
+		return path[:idx]
+	}
+	return path
+}
+
+func recorderOperation(path string) string {
+	switch path {
+	case consts.PathWalletPayment:
+		return "payment"
+	case consts.PathInvoiceCreate:
+		return "verification"
+	case consts.PathInvoiceStatus:
+		return "status"
+	case consts.PathInvoiceFiscalChecks:
+		return "fiscal_checks"
+	case consts.PathPubKey:
+		return "pubkey"
+	default:
+		return ""
+	}
 }
 
 type apiErrorBody struct {
