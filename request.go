@@ -185,6 +185,15 @@ func (r *Request) WithDestination(dest string) *Request {
 	return r
 }
 
+func (r *Request) WithComment(comment string) *Request {
+	comment = strings.TrimSpace(comment)
+	if comment == "" {
+		return r
+	}
+	r.ensureMerchantPaymInfo().Comment = comment
+	return r
+}
+
 // SaveCard enables tokenization and sets walletId.
 func (r *Request) SaveCard(walletID string) *Request {
 	walletID = strings.TrimSpace(walletID)

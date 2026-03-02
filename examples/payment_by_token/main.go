@@ -19,7 +19,7 @@ func main() {
 		log.Fatal("set CARD_TOKEN env")
 	}
 
-	amount := int64(4200)
+	amount := int64(100)
 	if s := os.Getenv("AMOUNT"); s != "" {
 		v, err := strconv.ParseInt(s, 10, 64)
 		if err != nil {
@@ -37,7 +37,8 @@ func main() {
 		WithCurrency(go_monobank.CurrencyUAH).
 		WithInitiationKind(go_monobank.InitiationMerchant).
 		WithReference("wallet-pay-001").
-		WithDestination("Token payment")
+		WithDestination("Token payment").
+		WithComment("Payment for wallet service")
 
 	resp, err := client.Payment(req)
 	if err != nil {

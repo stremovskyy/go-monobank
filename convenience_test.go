@@ -36,6 +36,27 @@ func TestRequestConvenienceMethods(t *testing.T) {
 	}
 }
 
+func TestRequestMerchantPaymInfoConvenienceMethods(t *testing.T) {
+	req := NewRequest().
+		WithReference("order-42").
+		WithDestination("Monthly subscription").
+		WithComment("Payment for March")
+
+	info := req.GetMerchantPaymInfo()
+	if info == nil {
+		t.Fatalf("expected merchantPaymInfo to be initialized")
+	}
+	if info.Reference != "order-42" {
+		t.Fatalf("reference mismatch: got %q want %q", info.Reference, "order-42")
+	}
+	if info.Destination != "Monthly subscription" {
+		t.Fatalf("destination mismatch: got %q want %q", info.Destination, "Monthly subscription")
+	}
+	if info.Comment != "Payment for March" {
+		t.Fatalf("comment mismatch: got %q want %q", info.Comment, "Payment for March")
+	}
+}
+
 func TestInvoiceStatusConvenienceMethods(t *testing.T) {
 	tests := []struct {
 		name    string
