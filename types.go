@@ -17,13 +17,15 @@ const (
 
 // PaymentType defines operation type.
 //
-// debit - regular debit
-// hold  - hold (requires later finalize), hold lifetime ~9 days (per docs)
+// debit        - regular debit
+// hold         - hold (requires later finalize), hold lifetime ~9 days (per docs)
+// verification - zero-amount card verification/tokenization
 type PaymentType string
 
 const (
-	PaymentTypeDebit PaymentType = "debit"
-	PaymentTypeHold  PaymentType = "hold"
+	PaymentTypeDebit        PaymentType = "debit"
+	PaymentTypeHold         PaymentType = "hold"
+	PaymentTypeVerification PaymentType = "verification"
 )
 
 // InitiationKind defines who initiated the wallet/token payment.

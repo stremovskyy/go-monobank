@@ -49,14 +49,26 @@ func (c *client) Verification(request *Request, runOpts ...RunOption) (*InvoiceC
 		return nil, &ValidationError{Op: "verification", Msg: "X-Token is required (set request.WithToken(...) or client WithToken(...))"}
 	}
 
-	amount := request.GetAmount()
-	if amount <= 0 {
-		return nil, &ValidationError{Op: "verification", Msg: "amount (minor units) must be > 0"}
-	}
-
 	ccy := request.GetCurrency()
 	if ccy == 0 {
 		ccy = CurrencyUAH
+	}
+
+	amount := request.GetAmount()
+	paymentType := request.GetPaymentType()
+	if paymentType == "" {
+		paymentType = PaymentTypeDebit
+	}
+
+	if paymentType == PaymentTypeVerification {
+		if amount != 0 {
+			return nil, &ValidationError{Op: "verification", Msg: "amount (minor units) must be 0 when paymentType=verification"}
+		}
+		if !request.ShouldSaveCard() {
+			return nil, &ValidationError{Op: "verification", Msg: "saveCardData.saveCard is required when paymentType=verification"}
+		}
+	} else if amount <= 0 {
+		return nil, &ValidationError{Op: "verification", Msg: "amount (minor units) must be > 0"}
 	}
 
 	if request.ShouldSaveCard() {
