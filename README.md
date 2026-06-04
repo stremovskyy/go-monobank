@@ -75,8 +75,9 @@ func main() {
 
 	resp, err := client.Verification(
 		go_monobank.NewRequest().
-			WithAmount(100). // 1.00 UAH in minor units
+			WithAmount(0).
 			WithCurrency(go_monobank.CurrencyUAH).
+			WithPaymentType(go_monobank.PaymentTypeVerification).
 			WithRedirectURL("https://example.com/return").
 			WithWebhookURL("https://example.com/webhook").
 			WithReference("verify-card-001").
@@ -256,8 +257,9 @@ Dry run skips the outgoing HTTP request and lets you inspect endpoint/payload.
 ```go
 _, _ = client.Verification(
 	go_monobank.NewRequest().
-		WithAmount(100).
+		WithAmount(0).
 		WithCurrency(go_monobank.CurrencyUAH).
+		WithPaymentType(go_monobank.PaymentTypeVerification).
 		SaveCard("wallet-id"),
 	go_monobank.DryRun(func(endpoint string, payload any) {
 		fmt.Println("endpoint:", endpoint)

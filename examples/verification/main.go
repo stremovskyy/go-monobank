@@ -36,8 +36,9 @@ func main() {
 
 	req := go_monobank.NewRequest().
 		WithToken(token).
-		WithAmount(100).
+		WithAmount(0).
 		WithCurrency(go_monobank.CurrencyUAH).
+		WithPaymentType(go_monobank.PaymentTypeVerification).
 		WithRedirectURL(redirectURL).
 		WithWebHookURL(webhookURL).
 		WithReference("verify-card-001").
@@ -51,12 +52,4 @@ func main() {
 
 	fmt.Println("Method - Verification - invoiceId:", resp.InvoiceID)
 	fmt.Println("Method - Verification - pageUrl:", resp.PageURL)
-
-	link, err := client.VerificationLink(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("Method - VerificationLink - parsedUrl:", link.String())
-
 }
