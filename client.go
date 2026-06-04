@@ -197,6 +197,38 @@ func (c *client) Status(request *Request, runOpts ...RunOption) (*InvoiceStatusR
 	return &resp, nil
 }
 
+// Wallet lists tokenized cards by walletId.
+// Under the hood: GET /api/merchant/wallet?walletId=...
+func (c *client) Wallet(request *Request, runOpts ...RunOption) (*WalletResponse, error) {
+	if request == nil {
+		return nil, &ValidationError{Op: "wallet", Msg: "request is nil"}
+	}
+
+	token := c.resolveToken(request)
+	if token == "" {
+		return nil, &ValidationError{Op: "wallet", Msg: "X-Token is required (set request.WithToken(...) or client WithToken(...))"}
+	}
+
+	walletID := request.GetWalletID()
+	if walletID == "" {
+		return nil, &ValidationError{Op: "wallet", Msg: "walletId is required (set request.WithWalletID(...))"}
+	}
+
+	opts := collectRunOptions(runOpts)
+	endpoint := c.cfg.baseURL + consts.PathWallet + "?walletId=" + url.QueryEscape(walletID)
+	if opts.isDryRun() {
+		opts.handleDryRun(endpoint, map[string]string{"walletId": walletID})
+		return nil, nil
+	}
+
+	var resp WalletResponse
+	if err := c.doJSON(context.Background(), http.MethodGet, consts.PathWallet+"?walletId="+url.QueryEscape(walletID), token, request, nil, &resp); err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
 // FiscalChecks returns PRRO fiscal checks for invoice.
 // Under the hood: GET /api/merchant/invoice/fiscal-checks?invoiceId=...
 func (c *client) FiscalChecks(request *Request, runOpts ...RunOption) (*FiscalChecksResponse, error) {
@@ -603,6 +635,8 @@ func recorderOperation(path string) string {
 		return "status"
 	case consts.PathInvoiceFiscalChecks:
 		return "fiscal_checks"
+	case consts.PathWallet:
+		return "wallet"
 	case consts.PathPubKey:
 		return "pubkey"
 	default:

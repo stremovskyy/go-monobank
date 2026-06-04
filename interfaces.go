@@ -10,6 +10,7 @@ import (
 //
 // Minimal supported flows:
 //   - Verification (invoice/create + saveCardData)
+//   - Tokenized card wallet list (wallet)
 //   - Payment by card token (wallet/payment)
 //   - Status (invoice/status)
 //   - Fiscal checks (invoice/fiscal-checks)
@@ -20,6 +21,9 @@ type Monobank interface {
 	Verification(request *Request, opts ...RunOption) (*InvoiceCreateResponse, error)
 	// VerificationLink is a helper that returns only pageUrl as parsed *url.URL.
 	VerificationLink(request *Request, opts ...RunOption) (*url.URL, error)
+
+	// Wallet lists tokenized cards for a merchant-defined walletId.
+	Wallet(request *Request, opts ...RunOption) (*WalletResponse, error)
 
 	// Payment performs a charge by tokenized card (wallet/payment).
 	Payment(request *Request, opts ...RunOption) (*WalletPaymentResponse, error)

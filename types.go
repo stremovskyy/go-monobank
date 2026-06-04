@@ -95,6 +95,18 @@ type InvoiceCreateResponse struct {
 	PageURL   string `json:"pageUrl"`
 }
 
+// WalletResponse is returned by GET /api/merchant/wallet.
+type WalletResponse struct {
+	Wallet []WalletItem `json:"wallet"`
+}
+
+// WalletItem is a tokenized card in a merchant-defined wallet.
+type WalletItem struct {
+	CardToken string `json:"cardToken"`
+	MaskedPan string `json:"maskedPan"`
+	Country   string `json:"country,omitempty"`
+}
+
 // ParsedPageURL parses response pageUrl as an absolute URL.
 func (r *InvoiceCreateResponse) ParsedPageURL() (*url.URL, error) {
 	if r == nil {
