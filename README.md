@@ -15,6 +15,7 @@ This library follows the same style as other `stremovskyy/*` SDKs:
 ## Features
 
 - Card tokenization (verification flow): `POST /api/merchant/invoice/create`
+- Tokenized card wallet list: `GET /api/merchant/wallet`
 - Payment by saved card token: `POST /api/merchant/wallet/payment`
 - Invoice status lookup: `GET /api/merchant/invoice/status`
 - PRRO fiscal checks by invoice: `GET /api/merchant/invoice/fiscal-checks`
@@ -40,6 +41,7 @@ go get github.com/stremovskyy/go-monobank@latest
 |---|---|---|
 | `Verification` | `POST /api/merchant/invoice/create` | Create invoice + enable `saveCardData` tokenization |
 | `VerificationLink` | `POST /api/merchant/invoice/create` | Convenience helper that returns parsed `pageUrl` |
+| `Wallet` | `GET /api/merchant/wallet` | List tokenized cards and masked PANs by `walletId` |
 | `Payment` | `POST /api/merchant/wallet/payment` | Charge by `cardToken` |
 | `Status` | `GET /api/merchant/invoice/status` | Fetch current invoice state |
 | `FiscalChecks` | `GET /api/merchant/invoice/fiscal-checks` | Fetch PRRO fiscal checks for invoice |
@@ -110,6 +112,35 @@ Best practice:
 
 Convenience helper:
 - If you already called `Verification(...)`, use `resp.ParsedPageURL()` to parse/validate `pageUrl` without a second API request.
+
+## Wallet / Masked PAN Lookup
+
+After tokenization, webhooks and status responses may include `walletData.cardToken`
+without `paymentInfo.maskedPan`. Use the wallet endpoint to fetch card metadata by
+the same `walletId` that was passed to `SaveCard(...)`.
+
+```go
+wallet, err := client.Wallet(
+	go_monobank.NewRequest().
+		WithToken(token). // optional if WithToken(...) is set on client
+		WithWalletID(walletID),
+)
+if err != nil {
+	return err
+}
+
+for _, card := range wallet.Wallet {
+	if card.CardToken != cardToken {
+		continue
+	}
+
+	displayMaskedPAN := strings.ReplaceAll(card.MaskedPan, "*", "X")
+	fmt.Println("cardToken:", card.CardToken)
+	fmt.Println("maskedPan:", card.MaskedPan)
+	fmt.Println("displayMaskedPan:", displayMaskedPAN)
+	fmt.Println("country:", card.Country)
+}
+```
 
 ## Payment by Card Token
 
@@ -349,6 +380,8 @@ Run from repository root:
 
 ```bash
 MONO_TOKEN=... go run ./examples/verification
+MONO_TOKEN=... WALLET_ID=... go run ./examples/wallet
+MONO_TOKEN=... WALLET_ID=... CARD_TOKEN=... go run ./examples/wallet
 MONO_TOKEN=... CARD_TOKEN=... go run ./examples/payment_by_token
 MONO_TOKEN=... INVOICE_ID=... go run ./examples/status
 MONO_TOKEN=... INVOICE_ID=... go run ./examples/fiscal_checks

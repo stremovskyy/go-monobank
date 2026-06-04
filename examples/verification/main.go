@@ -52,4 +52,7 @@ func main() {
 
 	fmt.Println("Method - Verification - invoiceId:", resp.InvoiceID)
 	fmt.Println("Method - Verification - pageUrl:", resp.PageURL)
+	fmt.Println("Method - Verification - walletId:", walletID)
+	fmt.Println("After webhook/status returns walletData.cardToken, fetch masked PAN with:")
+	fmt.Printf("MONO_TOKEN=... WALLET_ID=%s CARD_TOKEN=<cardToken> go run ./examples/wallet\n", walletID)
 }
