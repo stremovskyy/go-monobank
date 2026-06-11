@@ -16,7 +16,7 @@ This library follows the same style as other `stremovskyy/*` SDKs:
 
 - Card tokenization (verification flow): `POST /api/merchant/invoice/create`
 - Tokenized card wallet list: `GET /api/merchant/wallet`
-- Payment by saved card token: `POST /api/merchant/wallet/payment`
+- Payment by saved card token or Apple/Google Pay `aToken`: `POST /api/merchant/wallet/payment`
 - Invoice status lookup: `GET /api/merchant/invoice/status`
 - PRRO fiscal checks by invoice: `GET /api/merchant/invoice/fiscal-checks`
 - Webhook parsing and signature verification (`X-Sign`, ECDSA SHA-256)
@@ -42,7 +42,8 @@ go get github.com/stremovskyy/go-monobank@latest
 | `Verification` | `POST /api/merchant/invoice/create` | Create invoice + enable `saveCardData` tokenization |
 | `VerificationLink` | `POST /api/merchant/invoice/create` | Convenience helper that returns parsed `pageUrl` |
 | `Wallet` | `GET /api/merchant/wallet` | List tokenized cards and masked PANs by `walletId` |
-| `Payment` | `POST /api/merchant/wallet/payment` | Charge by `cardToken` |
+| `Payment` | `POST /api/merchant/wallet/payment` | Charge by `cardToken` or Apple/Google Pay `aToken` |
+| `Hold` | `POST /api/merchant/wallet/payment` | Hold by `cardToken` or Apple/Google Pay `aToken` |
 | `Status` | `GET /api/merchant/invoice/status` | Fetch current invoice state |
 | `FiscalChecks` | `GET /api/merchant/invoice/fiscal-checks` | Fetch PRRO fiscal checks for invoice |
 | `PublicKey` | `GET /api/merchant/pubkey` | Fetch webhook verification key |
@@ -164,6 +165,46 @@ if pe := resp.PaymentError(); pe != nil {
 	fmt.Println(pe.Error())
 }
 ```
+
+## Direct Apple Pay / Google Pay
+
+For direct wallet payments, pass the frontend payload to the SDK and use
+`initiationKind=client`. The SDK normalizes the payload and sends it to
+Monobank as `aToken`.
+
+Apple Pay:
+
+```go
+resp, err := client.Payment(
+	go_monobank.NewRequest().
+		WithToken(token).
+		WithAppleContainer(applePayPayload).
+		WithAmount(100).
+		WithCurrency(go_monobank.CurrencyUAH).
+		WithPaymentType(go_monobank.PaymentTypeDebit).
+		WithInitiationKind(go_monobank.InitiationClient).
+		WithReference("apple-pay-001").
+		WithDestination("Apple Pay payment"),
+)
+```
+
+Google Pay:
+
+```go
+resp, err := client.Payment(
+	go_monobank.NewRequest().
+		WithToken(token).
+		WithGoogleToken(googlePayPayload).
+		WithAmount(100).
+		WithCurrency(go_monobank.CurrencyUAH).
+		WithPaymentType(go_monobank.PaymentTypeDebit).
+		WithInitiationKind(go_monobank.InitiationClient).
+		WithReference("google-pay-001").
+		WithDestination("Google Pay payment"),
+)
+```
+
+For hold, call `client.Hold(request)` or set `PaymentTypeHold`.
 
 ## Status and Business Error Inspection
 
@@ -383,6 +424,8 @@ MONO_TOKEN=... go run ./examples/verification
 MONO_TOKEN=... WALLET_ID=... go run ./examples/wallet
 MONO_TOKEN=... WALLET_ID=... CARD_TOKEN=... go run ./examples/wallet
 MONO_TOKEN=... CARD_TOKEN=... go run ./examples/payment_by_token
+MONO_TOKEN=... APPLE_PAY_PAYLOAD='...' go run ./examples/apple_pay
+MONO_TOKEN=... GOOGLE_PAY_PAYLOAD='...' go run ./examples/google_pay
 MONO_TOKEN=... INVOICE_ID=... go run ./examples/status
 MONO_TOKEN=... INVOICE_ID=... go run ./examples/fiscal_checks
 MONO_TOKEN=... go run ./examples/webhook_http

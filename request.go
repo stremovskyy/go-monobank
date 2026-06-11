@@ -38,6 +38,20 @@ type PaymentData struct {
 
 type PaymentMethod struct {
 	CardToken *string
+	AToken    *string
+
+	// ApplePayToken is the raw JSON string of ApplePayPaymentToken.
+	ApplePayToken *string
+	// ApplePayPayment is the raw JSON string of the full ApplePayPayment object.
+	ApplePayPayment *string
+	// AppleContainer is a legacy base64-encoded Apple Pay payload.
+	AppleContainer *string
+	// GooglePayToken is the raw tokenizationData.token string.
+	GooglePayToken *string
+	// GooglePayPaymentData is the raw JSON string of the full Google Pay PaymentData payload.
+	GooglePayPaymentData *string
+	// GoogleToken is a legacy base64-encoded Google Pay payload.
+	GoogleToken *string
 
 	// WalletID is a merchant-defined identifier for a customer wallet.
 	// Used for card tokenization (saveCardData.walletId)
@@ -234,6 +248,69 @@ func (r *Request) WithCardToken(cardToken string) *Request {
 		return r
 	}
 	r.ensurePaymentMethod().CardToken = &cardToken
+	return r
+}
+
+func (r *Request) WithAToken(aToken string) *Request {
+	aToken = strings.TrimSpace(aToken)
+	if aToken == "" {
+		return r
+	}
+	r.ensurePaymentMethod().AToken = &aToken
+	return r
+}
+
+func (r *Request) WithApplePayToken(payload string) *Request {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return r
+	}
+	r.ensurePaymentMethod().ApplePayToken = &payload
+	return r
+}
+
+func (r *Request) WithApplePayPayment(payload string) *Request {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return r
+	}
+	r.ensurePaymentMethod().ApplePayPayment = &payload
+	return r
+}
+
+func (r *Request) WithAppleContainer(payload string) *Request {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return r
+	}
+	r.ensurePaymentMethod().AppleContainer = &payload
+	return r
+}
+
+func (r *Request) WithGooglePayToken(payload string) *Request {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return r
+	}
+	r.ensurePaymentMethod().GooglePayToken = &payload
+	return r
+}
+
+func (r *Request) WithGooglePayPaymentData(payload string) *Request {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return r
+	}
+	r.ensurePaymentMethod().GooglePayPaymentData = &payload
+	return r
+}
+
+func (r *Request) WithGoogleToken(payload string) *Request {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return r
+	}
+	r.ensurePaymentMethod().GoogleToken = &payload
 	return r
 }
 

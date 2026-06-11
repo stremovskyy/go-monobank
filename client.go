@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -112,26 +113,41 @@ func (c *client) VerificationLink(request *Request, runOpts ...RunOption) (*url.
 	return parsed, nil
 }
 
-// Payment performs a charge by tokenized card.
+// Payment performs a charge by tokenized card or direct wallet token.
 // Under the hood: POST /api/merchant/wallet/payment.
 func (c *client) Payment(request *Request, runOpts ...RunOption) (*WalletPaymentResponse, error) {
+	return c.walletPayment("payment", request, "", runOpts...)
+}
+
+// Hold performs a hold by tokenized card or direct wallet token.
+// Under the hood: POST /api/merchant/wallet/payment with paymentType=hold.
+func (c *client) Hold(request *Request, runOpts ...RunOption) (*WalletPaymentResponse, error) {
+	return c.walletPayment("hold", request, PaymentTypeHold, runOpts...)
+}
+
+func (c *client) walletPayment(
+	op string,
+	request *Request,
+	forcedPaymentType PaymentType,
+	runOpts ...RunOption,
+) (*WalletPaymentResponse, error) {
 	if request == nil {
-		return nil, &ValidationError{Op: "payment", Msg: "request is nil"}
-	}
-	// Token
-	token := c.resolveToken(request)
-	if token == "" {
-		return nil, &ValidationError{Op: "payment", Msg: "X-Token is required (set request.WithToken(...) or client WithToken(...))"}
+		return nil, &ValidationError{Op: op, Msg: "request is nil"}
 	}
 
-	cardToken := request.GetCardToken()
-	if cardToken == "" {
-		return nil, &ValidationError{Op: "payment", Msg: "cardToken is required (set request.WithCardToken(...))"}
+	token := c.resolveToken(request)
+	if token == "" {
+		return nil, &ValidationError{Op: op, Msg: "X-Token is required (set request.WithToken(...) or client WithToken(...))"}
+	}
+
+	source, err := resolveWalletPaymentSource(request)
+	if err != nil {
+		return nil, &ValidationError{Op: op, Msg: err.Error()}
 	}
 
 	amount := request.GetAmount()
 	if amount <= 0 {
-		return nil, &ValidationError{Op: "payment", Msg: "amount (minor units) must be > 0"}
+		return nil, &ValidationError{Op: op, Msg: "amount (minor units) must be > 0"}
 	}
 
 	ccy := request.GetCurrency()
@@ -141,16 +157,24 @@ func (c *client) Payment(request *Request, runOpts ...RunOption) (*WalletPayment
 
 	initKind := request.GetInitiationKind()
 	if strings.TrimSpace(string(initKind)) == "" {
-		return nil, &ValidationError{Op: "payment", Msg: "initiationKind is required (merchant|client)"}
-	}
-	if initKind == InitiationClient {
-		// docs: redirectUrl is required when initiationKind=client
-		if request.GetRedirectURL() == nil || strings.TrimSpace(*request.GetRedirectURL()) == "" {
-			return nil, &ValidationError{Op: "payment", Msg: "redirectUrl is required when initiationKind=client"}
-		}
+		return nil, &ValidationError{Op: op, Msg: "initiationKind is required (merchant|client)"}
 	}
 
-	payload := mapToWalletPaymentPayload(request, cardToken, amount, ccy, initKind)
+	paymentType := request.GetPaymentType()
+	if forcedPaymentType != "" {
+		paymentType = forcedPaymentType
+	}
+	if paymentType == "" {
+		paymentType = PaymentTypeDebit
+	}
+	if paymentType == PaymentTypeVerification {
+		return nil, &ValidationError{Op: op, Msg: "paymentType=verification is only supported by Verification"}
+	}
+	if paymentType != PaymentTypeDebit && paymentType != PaymentTypeHold {
+		return nil, &ValidationError{Op: op, Msg: "paymentType must be debit or hold"}
+	}
+
+	payload := mapToWalletPaymentPayload(request, source, amount, ccy, initKind, paymentType)
 
 	opts := collectRunOptions(runOpts)
 	endpoint := c.cfg.baseURL + consts.PathWalletPayment
@@ -803,9 +827,49 @@ func mapToInvoiceCreatePayload(r *Request, amount int64, ccy CurrencyCode) any {
 	return payload
 }
 
-func mapToWalletPaymentPayload(r *Request, cardToken string, amount int64, ccy CurrencyCode, kind InitiationKind) any {
+type walletPaymentSource struct {
+	CardToken string
+	AToken    string
+}
+
+func resolveWalletPaymentSource(r *Request) (walletPaymentSource, error) {
+	source := walletPaymentSource{CardToken: r.GetCardToken()}
+
+	aToken, err := r.GetAToken()
+	if err != nil {
+		if errors.Is(err, errATokenNotSet) {
+			err = nil
+		} else {
+			return source, err
+		}
+	} else {
+		source.AToken = strings.TrimSpace(aToken)
+	}
+
+	hasCardToken := strings.TrimSpace(source.CardToken) != ""
+	hasAToken := strings.TrimSpace(source.AToken) != ""
+
+	switch {
+	case hasCardToken && hasAToken:
+		return source, fmt.Errorf("only one payment source is allowed (cardToken or aToken)")
+	case !hasCardToken && !hasAToken:
+		return source, fmt.Errorf("cardToken or aToken is required")
+	default:
+		return source, nil
+	}
+}
+
+func mapToWalletPaymentPayload(
+	r *Request,
+	source walletPaymentSource,
+	amount int64,
+	ccy CurrencyCode,
+	kind InitiationKind,
+	paymentType PaymentType,
+) any {
 	payload := struct {
-		CardToken        string            `json:"cardToken"`
+		CardToken        string            `json:"cardToken,omitempty"`
+		AToken           string            `json:"aToken,omitempty"`
 		Amount           int64             `json:"amount"`
 		Currency         CurrencyCode      `json:"ccy"`
 		RedirectURL      *string           `json:"redirectUrl,omitempty"`
@@ -814,20 +878,18 @@ func mapToWalletPaymentPayload(r *Request, cardToken string, amount int64, ccy C
 		MerchantPaymInfo *MerchantPaymInfo `json:"merchantPaymInfo,omitempty"`
 		PaymentType      PaymentType       `json:"paymentType,omitempty"`
 	}{
-		CardToken:      cardToken,
+		CardToken:      strings.TrimSpace(source.CardToken),
+		AToken:         strings.TrimSpace(source.AToken),
 		Amount:         amount,
 		Currency:       ccy,
 		InitiationKind: kind,
+		PaymentType:    paymentType,
 	}
 
 	if r != nil {
 		payload.RedirectURL = r.GetRedirectURL()
 		payload.WebHookURL = r.GetWebHookURL()
 		payload.MerchantPaymInfo = r.GetMerchantPaymInfo()
-		payload.PaymentType = r.GetPaymentType()
-		if payload.PaymentType == "" {
-			payload.PaymentType = PaymentTypeDebit
-		}
 	}
 	return payload
 }

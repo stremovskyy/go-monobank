@@ -25,8 +25,10 @@ type Monobank interface {
 	// Wallet lists tokenized cards for a merchant-defined walletId.
 	Wallet(request *Request, opts ...RunOption) (*WalletResponse, error)
 
-	// Payment performs a charge by tokenized card (wallet/payment).
+	// Payment performs a charge by tokenized card or direct wallet token (wallet/payment).
 	Payment(request *Request, opts ...RunOption) (*WalletPaymentResponse, error)
+	// Hold performs a hold by tokenized card or direct wallet token (wallet/payment).
+	Hold(request *Request, opts ...RunOption) (*WalletPaymentResponse, error)
 
 	// Status returns current invoice status (invoice/status).
 	Status(request *Request, opts ...RunOption) (*InvoiceStatusResponse, error)
